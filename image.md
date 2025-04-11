@@ -141,3 +141,18 @@ for images, _ in train_ds.take(1):
     plt.imshow(augmented_images[0].numpy().astype("uint8"))
     plt.axis("off")
 ```
+
+## 6. 최상위층 고정 해제
+
+```python
+# Let's take a look to see how many layers are in the base model
+print("Number of layers in the base model: ", len(base_model.layers))
+
+# Fine-tune from this layer onwards
+fine_tune_at = 100
+
+# Freeze all the layers before the `fine_tune_at` layer
+for layer in base_model.layers[:fine_tune_at]:
+  layer.trainable = False
+```
+
