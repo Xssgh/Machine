@@ -151,6 +151,112 @@ print("Number of layers in the base model: ", len(base_model.layers))
 # Fine-tune from this layer onwards
 fine_tune_at = 100
 
+## 7. 전처리기 레이어 데이터 증강
+
+```python
+data_augmentation = tf.keras.Sequential([
+  layers.RandomFlip("horizontal_and_vertical"),
+  layers.RandomRotation(0.2),
+])
+
+# Add the image to a batch.
+image = tf.cast(tf.expand_dims(image, 0), tf.float32)
+
+plt.figure(figsize=(10, 10))
+for i in range(9):
+  augmented_image = data_augmentation(image)
+  ax = plt.subplot(3, 3, i + 1)
+  plt.imshow(augmented_image[0])
+  plt.axis("off")
+```
+
+---
+
+## 8. 전처리 레이어를 사용하기 위한 옵션
+
+### 1. 모델에 전처리 레이어 추가
+
+```python
+model = tf.keras.Sequential([
+  # Add the preprocessing layers you created earlier.
+  resize_and_rescale,
+  data_augmentation,
+  layers.Conv2D(16, 3, padding='same', activation='relu'),
+  layers.MaxPooling2D(),
+  # Rest of your model.
+])
+```
+
+### 2. 데이터셋에 전처리 적용
+
+```python
+aug_ds = train_ds.map(
+  lambda x, y: (resize_and_rescale(x, training=True), y))
+```
+
+---
+
+## 9. 데이터세트에 전처리 레이어 적용하기
+
+```python
+batch_size = 32
+AUTOTUNE = tf.data.AUTOTUNE
+
+def prepare(ds, shuffle=False, augment=False):
+  # Resize and rescale all datasets.
+  ds = ds.map(lambda x, y: (resize_and_rescale(x), y), 
+              num_parallel_calls=AUTOTUNE)
+
+  if shuffle:
+    ds = ds.shuffle(1000)
+
+  # Batch all datasets.
+  ds = ds.batch(batch_size)
+
+  # Use data augmentation only on the training set.
+  if augment:
+    ds = ds.map(lambda x, y: (data_augmentation(x, training=True), y), 
+                num_parallel_calls=AUTOTUNE)
+
+  # Use buffered prefetching on all datasets.
+  return ds.prefetch(buffer_size=AUTOTUNE)
+```
+
+---
+
+## 10. 데이터 세트에 증강 적용하기
+
+```python
+(train_datasets, val_ds, test_ds), metadata = tfds.load(
+    'tf_flowers',
+    split=['train[:80%]', 'train[80%:90%]', 'train[90%:]'],
+    with_info=True,
+    as_supervised=True,
+)
+
+def resize_and_rescale(image, label):
+  image = tf.cast(image, tf.float32)
+  image = tf.image.resize(image, [IMG_SIZE, IMG_SIZE])
+  image = (image / 255.0)
+  return image, label
+
+def augment(image_label, seed):
+  image, label = image_label
+  image, label = resize_and_rescale(image, label)
+  image = tf.image.resize_with_crop_or_pad(image, IMG_SIZE + 6, IMG_SIZE + 6)
+  # Make a new seed.
+  new_seed = tf.random.experimental.stateless_split(seed, num=1)[0, :]
+  # Random crop back to the original size.
+  image = tf.image.stateless_random_crop(
+      image, size=[IMG_SIZE, IMG_SIZE, 3], seed=seed)
+  # Random brightness.
+  image = tf.image.stateless_random_brightness(
+      image, max_delta=0.5, seed=new_seed)
+  image = tf.clip_by_value(image, 0, 1)
+  return image, label
+```
+
+
 # Freeze all the layers before the `fine_tune_at` layer
 for layer in base_model.layers[:fine_tune_at]:
   layer.trainable = False
